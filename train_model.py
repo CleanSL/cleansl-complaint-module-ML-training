@@ -15,7 +15,7 @@ train_ds = tf.keras.utils.image_dataset_from_directory(
     "dataset/train",
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    label_mode="binary",
+    label_mode="categorical",
     seed=SEED
 )
 
@@ -23,7 +23,7 @@ val_ds = tf.keras.utils.image_dataset_from_directory(
     "dataset/val",
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    label_mode="binary",
+    label_mode="categorical",
     seed=SEED
 )
 
@@ -31,7 +31,7 @@ test_ds = tf.keras.utils.image_dataset_from_directory(
     "dataset/test",
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    label_mode="binary",
+    label_mode="categorical",
     shuffle=False
 )
 
@@ -80,12 +80,12 @@ x = base_model(x, training=False)
 x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
 x = tf.keras.layers.Dropout(0.2)(x) 
-outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
+outputs = tf.keras.layers.Dense(len(class_names), activation="softmax")(x)
 model = tf.keras.Model(inputs, outputs)
 
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-    loss="binary_crossentropy",
+    loss="categorical_crossentropy",
     metrics=["accuracy"]
 )
 
@@ -111,16 +111,16 @@ print(f"Test Accuracy: {test_acc:.2f}")
 # -----------------------------
 # Save model
 # -----------------------------
-model.save("sorted_unsorted_model.keras")
+model.save("waste_multi_class_model.keras")
 
 # -----------------------------
 # Convert to TFLite
 # -----------------------------
-# converter = tf.lite.TFLiteConverter.from_saved_model("sorted_unsorted_model")
+# converter = tf.lite.TFLiteConverter.from_saved_model("waste_multi_class_model")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
 
-with open("sorted_unsorted_model.tflite", "wb") as f:
+with open("waste_multi_class_model.tflite", "wb") as f:
     f.write(tflite_model)
 
 print("TFLite model saved successfully.")
