@@ -1,62 +1,61 @@
 import tensorflow as tf
-import matplotlib.pyplot as plt
+import os
 
 # -----------------------------
 # Config
 # -----------------------------
 IMG_SIZE = (224, 224)
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 SEED = 42
+DATASET_PATH = "dataset-resized"  # change if needed
 
 # -----------------------------
-# Load datasets
+# Load Dataset (Train + Val Split)
 # -----------------------------
 train_ds = tf.keras.utils.image_dataset_from_directory(
-    "dataset/train",
+    DATASET_PATH,
+    validation_split=0.2,
+    subset="training",
+    seed=SEED,
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    seed=SEED
+    label_mode="categorical"
 )
 
 val_ds = tf.keras.utils.image_dataset_from_directory(
-    "dataset/val",
+    DATASET_PATH,
+    validation_split=0.2,
+    subset="validation",
+    seed=SEED,
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    seed=SEED
-)
-
-test_ds = tf.keras.utils.image_dataset_from_directory(
-    "dataset/test",
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    shuffle=False
+    label_mode="categorical"
 )
 
 class_names = train_ds.class_names
-print("Class names:", class_names)
+num_classes = len(class_names)
+
+print("Classes:", class_names)
 
 # -----------------------------
-# Performance optimization
+# Performance Optimization
 # -----------------------------
 AUTOTUNE = tf.data.AUTOTUNE
-train_ds = train_ds.cache().shuffle(100).prefetch(buffer_size=AUTOTUNE)
+train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
 val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
-test_ds = test_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
 # -----------------------------
-# Data augmentation
+# Data Augmentation
 # -----------------------------
 data_augmentation = tf.keras.Sequential([
     tf.keras.layers.RandomFlip("horizontal"),
-    tf.keras.layers.RandomRotation(0.1),
+    tf.keras.layers.RandomRotation(0.2),
     tf.keras.layers.RandomZoom(0.2),
+    tf.keras.layers.RandomContrast(0.2),
 ])
 
 # -----------------------------
-# Base model (MobileNetV2)
+# Base Model (MobileNetV2)
 # -----------------------------
 base_model = tf.keras.applications.MobileNetV2(
     input_shape=IMG_SIZE + (3,),
@@ -64,23 +63,19 @@ base_model = tf.keras.applications.MobileNetV2(
     weights="imagenet"
 )
 
-base_model.trainable = True
-
-for layer in base_model.layers[:-60]:
-    layer.trainable = False
-
+base_model.trainable = False  # IMPORTANT for first training phase
 
 # -----------------------------
-# Build model
+# Build Model
 # -----------------------------
 inputs = tf.keras.Input(shape=IMG_SIZE + (3,))
 x = data_augmentation(inputs)
 x = tf.keras.applications.mobilenet_v2.preprocess_input(x)
 x = base_model(x, training=False)
 x = tf.keras.layers.GlobalAveragePooling2D()(x)
+x = tf.keras.layers.Dropout(0.3)(x)
+outputs = tf.keras.layers.Dense(num_classes, activation="softmax")(x)
 
-x = tf.keras.layers.Dropout(0.2)(x) 
-outputs = tf.keras.layers.Dense(len(class_names), activation="softmax")(x)
 model = tf.keras.Model(inputs, outputs)
 
 model.compile(
@@ -94,7 +89,7 @@ model.summary()
 # -----------------------------
 # Train
 # -----------------------------
-EPOCHS = 50
+EPOCHS = 15
 
 history = model.fit(
     train_ds,
@@ -103,24 +98,39 @@ history = model.fit(
 )
 
 # -----------------------------
-# Evaluate
+# Fine-Tuning (Optional Second Phase)
 # -----------------------------
-test_loss, test_acc = model.evaluate(test_ds)
-print(f"Test Accuracy: {test_acc:.2f}")
+base_model.trainable = True
+
+for layer in base_model.layers[:-40]:
+    layer.trainable = False
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+fine_tune_epochs = 10
+
+history_fine = model.fit(
+    train_ds,
+    validation_data=val_ds,
+    epochs=fine_tune_epochs
+)
 
 # -----------------------------
-# Save model
+# Save Model
 # -----------------------------
-model.save("waste_multi_class_model.keras")
+model.save("waste_multiclass_model.keras")
 
 # -----------------------------
 # Convert to TFLite
 # -----------------------------
-# converter = tf.lite.TFLiteConverter.from_saved_model("waste_multi_class_model")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
 
-with open("waste_multi_class_model.tflite", "wb") as f:
+with open("waste_multiclass_model.tflite", "wb") as f:
     f.write(tflite_model)
 
 print("TFLite model saved successfully.")
