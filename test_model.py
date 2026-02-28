@@ -1,34 +1,64 @@
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+from collections import Counter
 
-# Load TFLite model
-interpreter = tf.lite.Interpreter(model_path="waste_multiclass_model.tflite")
-interpreter.allocate_tensors()
+# -----------------------------
+# CONFIG
+# -----------------------------
+MODEL_PATH = "waste_multiclass_model.keras"
+IMAGE_PATH = "test.jpg"
+IMG_SIZE = (224, 224)
+GRID_SIZE = 3  # 3x3 patches
 
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+# -----------------------------
+# Load Model
+# -----------------------------
+model = tf.keras.models.load_model(MODEL_PATH)
 
-# Load and preprocess test image
-img = Image.open("image.jpg").convert("RGB")
-img = img.resize((224, 224))
-img = np.array(img, dtype=np.float32)
+class_names = ["glass", "metal", "organic", "other", "paper", "plastic"]
+# ⚠️ Make sure this matches training order
 
-# MobileNetV2 preprocessing
-img = (img / 127.5) - 1.0
-img = np.expand_dims(img, axis=0)
+# -----------------------------
+# Load Image
+# -----------------------------
+image = Image.open(IMAGE_PATH).convert("RGB")
+width, height = image.size
 
-# Run inference
-interpreter.set_tensor(input_details[0]['index'], img)
-interpreter.invoke()
+patch_predictions = []
 
-output = interpreter.get_tensor(output_details[0]['index'])
-print(output)
+# -----------------------------
+# Split into patches
+# -----------------------------
+patch_width = width // GRID_SIZE
+patch_height = height // GRID_SIZE
 
-class_names = ['cardboard', 'glass', 'metal', 'paper', 'plastic', 'trash']
+for i in range(GRID_SIZE):
+    for j in range(GRID_SIZE):
+        left = j * patch_width
+        top = i * patch_height
+        right = left + patch_width
+        bottom = top + patch_height
 
-output = interpreter.get_tensor(output_details[0]['index'])[0]
+        patch = image.crop((left, top, right, bottom))
+        patch = patch.resize(IMG_SIZE)
 
-print("Probabilities:", output)
-print("Sum:", np.sum(output))
-print("Predicted:", class_names[np.argmax(output)])
+        patch_array = np.array(patch, dtype=np.float32)
+        patch_array = tf.keras.applications.mobilenet_v2.preprocess_input(patch_array)
+        patch_array = np.expand_dims(patch_array, axis=0)
+
+        prediction = model.predict(patch_array, verbose=0)[0]
+        top_index = np.argmax(prediction)
+        top_class = class_names[top_index]
+
+        patch_predictions.append(top_class)
+
+# -----------------------------
+# Majority Vote
+# -----------------------------
+vote_count = Counter(patch_predictions)
+final_prediction = vote_count.most_common(1)[0][0]
+
+print("\nPatch Predictions:", patch_predictions)
+print("Vote Distribution:", vote_count)
+print("\nFINAL PREDICTION:", final_prediction)

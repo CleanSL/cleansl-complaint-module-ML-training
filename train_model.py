@@ -7,7 +7,7 @@ import os
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
 SEED = 42
-DATASET_PATH = "dataset-resized"  # change if needed
+DATASET_PATH = "dataset_final"  # change if needed
 
 # -----------------------------
 # Load Dataset (Train + Val Split)
@@ -89,7 +89,7 @@ model.summary()
 # -----------------------------
 # Train
 # -----------------------------
-EPOCHS = 15
+EPOCHS = 25
 
 history = model.fit(
     train_ds,
@@ -111,7 +111,7 @@ model.compile(
     metrics=["accuracy"]
 )
 
-fine_tune_epochs = 10
+fine_tune_epochs = 15
 
 history_fine = model.fit(
     train_ds,
